@@ -41,19 +41,24 @@ def prepare_arrays(gwfmodel, model_directory):
         wel_nodes = wel_flow['node']-1 #get lrc needs 0 array indices
         wel_index = grid.get_lrc(wel_nodes) #
         wel_q = wel_flow['q']
-        wel_iface = wel_flow['iface']
+        wel_iface = wel_flow['IFACE'].astype(np.int16)
     except:
         wel_flow = None
         wel_index = None
         wel_iface = None
         wel_q = None
-    
-    chd_flow = budget.get_data(text = 'CHD')
-    chd_flow = chd_flow[0]
-    chd_nodes = chd_flow['node']-1 #get lrc needs 0 array indices
-    chd_iface = chd_flow['IFACE'].astype(np.int16)
-    chd_q = chd_flow['q']
-    chd_index = grid.get_lrc(chd_nodes)
+    try:
+        chd_flow = budget.get_data(text = 'CHD')
+        chd_flow = chd_flow[0]
+        chd_nodes = chd_flow['node']-1 #get lrc needs 0 array indices
+        chd_iface = chd_flow['IFACE'].astype(np.int16)
+        chd_q = chd_flow['q']
+        chd_index = grid.get_lrc(chd_nodes)
+    except:
+        chd_flow = None
+        chd_index = None
+        chd_iface = None
+        chd_q = None
     
     ## Indicator that says where the particle should be terminated here:
     termination = np.zeros_like(heads).astype(np.int16)
@@ -78,23 +83,24 @@ def prepare_arrays(gwfmodel, model_directory):
     all_faces[0,:,:,1:] = structured_face_flows[0,:,:,:-1]#left x face
     all_faces[3,:,1:,:] = (-1)*structured_face_flows[1,:,:-1,:] #top y face
     all_faces[5,1:,:,:] = (-1)*structured_face_flows[2,:-1,:,:] #upper z face
-    
-    i = 0
-    for ind in chd_index:
-        iface = chd_iface[i].astype(np.int16)
-        if iface == 1: #left face:
-            ind = (0,)+ind
-            all_faces[ind] = all_faces[ind]+ chd_q[i]
-        elif iface == 2:
-            ind = (1,)+ind
-            all_faces[ind] = all_faces[ind] - chd_q[i]
-        elif iface == 6:
-            ind = (5,)+ind
-            all_faces[ind] = all_faces[ind] - chd_q[i]
-        else:
+
+    if chd_flow is not None:
+        i = 0
+        for ind in chd_index:
+            iface = chd_iface[i].astype(np.int16)
+            if iface == 1: #left face:
+                ind = (0,)+ind
+                all_faces[ind] = all_faces[ind]+ chd_q[i]
+            elif iface == 2:
+                ind = (1,)+ind
+                all_faces[ind] = all_faces[ind] - chd_q[i]
+            elif iface == 6:
+                ind = (5,)+ind
+                all_faces[ind] = all_faces[ind] - chd_q[i]
+            else:
+                i+=1
+                continue
             i+=1
-            continue
-        i+=1
         
     if (wel_flow is not None):
         i = 0
