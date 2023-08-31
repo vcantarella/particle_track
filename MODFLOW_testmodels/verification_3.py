@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 """
 Create and run the MODFLOW and MODPATH model and save the model files in folder 'modflow_verification_3'
-
+3D Grounwater flow problem from Provost et al 2017 - Groundwater Whirls problem from Documentation of the XT3D document.
 @author: vcant
 """
 
