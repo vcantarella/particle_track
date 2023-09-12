@@ -20,7 +20,7 @@ from .preprocessing import prepare_arrays
 
 # creating the velocity function:
 
-@numba.njit
+@numba.njit(nogil=True)
 def velocity(coords, v0, gv, face_coords):
     """
     Calculates cell velocities at the starting location in the cell.
@@ -160,7 +160,7 @@ def exit_location(exit_ind, gradient_logic, dt, v1, v2, v, gv, x, left_x, right_
     return x_new
 
 
-@numba.njit()
+@numba.njit(nogil=True)
 def numba_max_abs(d_array):
     res = []
     for i in range(d_array.shape[0]):
@@ -170,7 +170,7 @@ def numba_max_abs(d_array):
     return np.array(res)
 
 
-@numba.njit()
+@numba.njit(nogil=True)
 def negative_index(ind_array):
     for i in range(ind_array.shape[0]):
         if ind_array[i] < 0:
@@ -178,7 +178,7 @@ def negative_index(ind_array):
     return False
 
 
-@numba.njit()
+@numba.njit(nogil=True)
 def larger_index(test_array, reference_array):
     for i in range(test_array.shape[0]):
         if test_array[i] > reference_array[i]:

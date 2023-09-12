@@ -70,7 +70,7 @@ def prepare_arrays(gwfmodel, model_directory):
     
     structured_face_flows = get_structured_faceflows(flow_ja_face, grb_file=os.path.join(model_directory,gwfmodel.name+'.dis.grb'), verbose=True)
     structured_face_flows = np.stack(structured_face_flows)
-    saturated_thickness = grid.saturated_thick(heads)
+    saturated_thickness = grid.saturated_thickness(heads)
     
     ## Building dataset. Here we assume the left CHD goes inflow and the right CHD goes outflow.
     
