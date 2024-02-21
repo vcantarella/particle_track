@@ -9,16 +9,20 @@ Created on Wed May 10 16:35:06 2023
 # Assumes model is unrotated.
 
 
-import numpy as np
-import flopy
+
 from functools import partial
-import numba
-from numba import boolean, float64, int64
 from multiprocessing import Pool
+import flopy
+
+import numba
+import numpy as np
+from numba import boolean, float64, int64
+
 from .preprocessing import prepare_arrays
 
 
 # creating the velocity function:
+
 
 @numba.njit(nogil=True)
 def velocity(coords, v0, gv, face_coords):
@@ -65,11 +69,11 @@ def exit_direction(v1, v2, v):
     -------
 
     """
-    if (v1 >= 0.) & (v2 > 0.):
+    if (v1 >= 0.0) & (v2 > 0.0):
         r = 1
-    elif (v1 < 0.) & (v2 <= 0.):
+    elif (v1 < 0.0) & (v2 <= 0.0):
         r = -1
-    elif (v1 >= 0.) & (v2 <= 0.):
+    elif (v1 >= 0.0) & (v2 <= 0.0):
         r = 0
     else:  # (v1 < 0) & (v2 > 0):
         if v > 0:
@@ -81,8 +85,22 @@ def exit_direction(v1, v2, v):
     return r
 
 
-@numba.vectorize([float64(int64, boolean, float64, float64, float64, float64, float64, float64, float64)],
-                 nopython=True)
+@numba.vectorize(
+    [
+        float64(
+            int64,
+            boolean,
+            float64,
+            float64,
+            float64,
+            float64,
+            float64,
+            float64,
+            float64,
+        )
+    ],
+    nopython=True,
+)
 def reach_time(exit_ind, gradient_logic, v1, v2, v, gv, x, left_x, right_x):
     """
     Calculates the time to reach the exit faces at each axis.
@@ -112,15 +130,30 @@ def reach_time(exit_ind, gradient_logic, v1, v2, v, gv, x, left_x, right_x):
         else:
             tx = np.log(v1 / v) / gv
     else:  # exit_ind == 1
-        if ~ gradient_logic:
+        if ~gradient_logic:
             tx = (right_x - x) / v
         else:
             tx = np.log(v2 / v) / gv
     return tx
 
 
-@numba.vectorize([float64(int64, boolean, float64, float64, float64, float64, float64,
-                          float64, float64, float64)], nopython=True)
+@numba.vectorize(
+    [
+        float64(
+            int64,
+            boolean,
+            float64,
+            float64,
+            float64,
+            float64,
+            float64,
+            float64,
+            float64,
+            float64,
+        )
+    ],
+    nopython=True,
+)
 def exit_location(exit_ind, gradient_logic, dt, v1, v2, v, gv, x, left_x, right_x):
     """
     Calculate the coordinates at the exit location in the cell
@@ -187,7 +220,17 @@ def larger_index(test_array, reference_array):
 
 
 @numba.njit
-def trajectory(initial_position, initial_cell, face_velocities, gvs, xedges, yedges, z_lf, z_uf, termination):
+def trajectory(
+    initial_position,
+    initial_cell,
+    face_velocities,
+    gvs,
+    xedges,
+    yedges,
+    z_lf,
+    z_uf,
+    termination,
+):
     """
     Calculates the trajectory of a particle until it leaves the domain or find a termination point.
     Parameters
@@ -221,12 +264,24 @@ def trajectory(initial_position, initial_cell, face_velocities, gvs, xedges, yed
 
     termination_criteria = True
     ts = []
-    layers = [layer, ]
-    rows = [row, ]
-    cols = [col, ]
-    xes = [x, ]
-    yes = [y, ]
-    zes = [z, ]
+    layers = [
+        layer,
+    ]
+    rows = [
+        row,
+    ]
+    cols = [
+        col,
+    ]
+    xes = [
+        x,
+    ]
+    yes = [
+        y,
+    ]
+    zes = [
+        z,
+    ]
     coords = np.array([x, y, z])
 
     # While loop until termination:
@@ -254,11 +309,23 @@ def trajectory(initial_position, initial_cell, face_velocities, gvs, xedges, yed
         v = velocity(coords, v0, gvp, coords_0)
 
         # Where is it going:
-        velocity_gradient_index = np.abs(v0 - v1) > 1e-10 * numba_max_abs(np.column_stack((v0, v1)))
+        velocity_gradient_index = np.abs(v0 - v1) > 1e-10 * numba_max_abs(
+            np.column_stack((v0, v1))
+        )
         exit_direction_index = exit_direction(v0, v1, v)
 
         # Time to reach each end
-        dt_array = reach_time(exit_direction_index, velocity_gradient_index, v0, v1, v, gvp, coords, coords_0, coords_1)
+        dt_array = reach_time(
+            exit_direction_index,
+            velocity_gradient_index,
+            v0,
+            v1,
+            v,
+            gvp,
+            coords,
+            coords_0,
+            coords_1,
+        )
 
         # actual travel time:
         dt = np.min(dt_array)
@@ -267,8 +334,18 @@ def trajectory(initial_position, initial_cell, face_velocities, gvs, xedges, yed
         if dt == np.inf:
             break
 
-        exit_point = exit_location(exit_direction_index, velocity_gradient_index, dt, v0, v1, v, gvp, coords, coords_0,
-                                   coords_1)
+        exit_point = exit_location(
+            exit_direction_index,
+            velocity_gradient_index,
+            dt,
+            v0,
+            v1,
+            v,
+            gvp,
+            coords,
+            coords_0,
+            coords_1,
+        )
 
         if exit_point_loc == 0:
             col = col + exit_direction_index[0]
@@ -289,15 +366,17 @@ def trajectory(initial_position, initial_cell, face_velocities, gvs, xedges, yed
         ##termination criteria evaluation: whether the particle has reached a termination layer or out of the system
 
         has_negative_index = negative_index(np.array([layer, row, col]))
-        over_index = larger_index(np.array([layer, row, col]), np.array(termination.shape))
+        over_index = larger_index(
+            np.array([layer, row, col]), np.array(termination.shape)
+        )
         term_value = termination[layer, row, col]
 
-        if ((term_value == 1) | has_negative_index | over_index):
+        if (term_value == 1) | has_negative_index | over_index:
             termination_criteria = False
         # new loop:
         coords = exit_point
 
-    ts.append(0.)
+    ts.append(0.0)
     ts = np.array(ts)
     xes = np.array(xes)
     yes = np.array(yes)
@@ -309,8 +388,10 @@ def trajectory(initial_position, initial_cell, face_velocities, gvs, xedges, yed
     return inds, ts, xes, yes, zes
 
 
-def work(iterator_realization, face_velocities, gvs, xedges, yedges, z_lf, z_uf, termination):
-    '''
+def work(
+    iterator_realization, face_velocities, gvs, xedges, yedges, z_lf, z_uf, termination
+):
+    """
     Runs the particle trajectory in a multiprocessing enviroment.
     The particle array information is stored in the iterator_realization variable
     Returns
@@ -318,7 +399,7 @@ def work(iterator_realization, face_velocities, gvs, xedges, yedges, z_lf, z_uf,
     particle_traj : TYPE
         returns the particle trajectory
 
-    '''
+    """
 
     j = iterator_realization[1]
     particle_array = iterator_realization[0]
@@ -327,31 +408,51 @@ def work(iterator_realization, face_velocities, gvs, xedges, yedges, z_lf, z_uf,
     particle_starting_coords = particle_array[:3]
     particle_starting_cell = particle_array[3:].astype(np.int64)
     # Initializing array
-    inds, ts, xes, yes, zes = trajectory(particle_starting_coords, particle_starting_cell,
-                                         face_velocities, gvs, xedges, yedges, z_lf, z_uf, termination)
+    inds, ts, xes, yes, zes = trajectory(
+        particle_starting_coords,
+        particle_starting_cell,
+        face_velocities,
+        gvs,
+        xedges,
+        yedges,
+        z_lf,
+        z_uf,
+        termination,
+    )
     jes = np.repeat(j, xes.shape[0])
     particle_traj = np.column_stack((jes, xes, yes, zes, ts))
     return particle_traj
 
 
-def particle_track(gwfmodel: flopy.mf6.MFModel,
-                   model_directory: str,
-                   particles_starting_location: np.ndarray,
-                   mode: str = 'forward',
-                   processes: int = 4):
+def pollock(
+    gwfmodel: flopy.mf6.MFModel,
+    model_directory: str,
+    particles_starting_location: np.ndarray,
+    porosity: float | np.ndarray,
+    mode: str = "forward",
+    processes: int = 4,
+):
     iter_coords = iter(particles_starting_location)
     js = np.arange(particles_starting_location.shape[0])
 
-    xedges, yedges, z_lf, z_uf, gvs, face_velocities, termination = prepare_arrays(gwfmodel, model_directory)
+    xedges, yedges, z_lf, z_uf, gvs, face_velocities, termination = prepare_arrays(
+        gwfmodel, model_directory, porosity
+    )
 
-    if mode == 'backwards':
+    if mode == "backwards":
         face_velocities = (-1) * face_velocities
         gvs = (-1) * gvs
 
-    good_work = partial(work, face_velocities=face_velocities, gvs=gvs,
-                        xedges=xedges,
-                        yedges=yedges, z_lf=z_lf, z_uf=z_uf,
-                        termination=termination)
+    good_work = partial(
+        work,
+        face_velocities=face_velocities,
+        gvs=gvs,
+        xedges=xedges,
+        yedges=yedges,
+        z_lf=z_lf,
+        z_uf=z_uf,
+        termination=termination,
+    )
 
     with Pool(processes=processes) as pool:
         results = pool.map(good_work, zip(iter_coords, js))
@@ -359,72 +460,4 @@ def particle_track(gwfmodel: flopy.mf6.MFModel,
     true_results = np.vstack(results)
 
     return true_results
-
-
-if __name__ == 'main':
-    print('TESTING')
-    dirc = 'test1'
-    sim = flopy.mf6.MFSimulation.load(sim_name='mfsim.nam', sim_ws=dirc, )
-    gwf = sim.gwf[0]
-    grid = gwf.modelgrid
-    nlays = grid.nlay
-    ncols = grid.ncol
-    nrows = grid.nrow
-    cell_centers = grid.xyzcellcenters
-    head = gwf.output.head()
-    head_array = head.get_data()
-    X = np.ravel(np.tile(cell_centers[0], (nlays, 1, 1)))
-    Y = np.ravel(np.tile(cell_centers[1], (nlays, 1, 1)))
-    Z = cell_centers[2].flatten()
-    layers = np.arange(0, nlays)
-    layers = layers[:, np.newaxis, np.newaxis]
-    layers = layers * np.ones(cell_centers[2].shape)
-    rows = np.arange(0, ncols)
-    rows = rows[np.newaxis, :, np.newaxis]
-    rows = rows * np.ones(cell_centers[2].shape)
-    cols = np.arange(0, ncols)
-    cols = cols[np.newaxis, np.newaxis, :]
-    cols = cols * np.ones(cell_centers[2].shape)
-    layers = np.ravel(layers)
-    rows = np.ravel(rows)
-    cols = np.ravel(cols)
-
-    particle_centers = np.column_stack((X, Y, Z, layers, rows, cols))
-
-    particle_results = particle_track(gwf, dirc, particle_centers, 'backwards')
-
-    np.save('test1_particles.npy', particle_results)
-
-    '''------------------------------------------------'''
-    print('TESTING HYVR MODEL')
-    dirc = 'hysim_model_test'
-    sim = flopy.mf6.MFSimulation.load(sim_name='mfsim.nam', sim_ws=dirc, )
-    gwf = sim.gwf[0]
-    grid = gwf.modelgrid
-    nlays = grid.nlay
-    ncols = grid.ncol
-    nrows = grid.nrow
-    cell_centers = grid.xyzcellcenters
-    head = gwf.output.head()
-    head_array = head.get_data()
-    X = np.ravel(np.tile(cell_centers[0], (nlays, 1, 1)))
-    Y = np.ravel(np.tile(cell_centers[1], (nlays, 1, 1)))
-    Z = cell_centers[2].flatten()
-    layers = np.arange(0, nlays)
-    layers = layers[:, np.newaxis, np.newaxis]
-    layers = layers * np.ones(cell_centers[2].shape)
-    rows = np.arange(0, ncols)
-    rows = rows[np.newaxis, :, np.newaxis]
-    rows = rows * np.ones(cell_centers[2].shape)
-    cols = np.arange(0, ncols)
-    cols = cols[np.newaxis, np.newaxis, :]
-    cols = cols * np.ones(cell_centers[2].shape)
-    layers = np.ravel(layers)
-    rows = np.ravel(rows)
-    cols = np.ravel(cols)
-
-    particle_centers = np.column_stack((X, Y, Z, layers, rows, cols))
-
-    particle_results = particle_track(gwf, dirc, particle_centers, 'backwards')
-
-    np.save('hysim_particles.npy', particle_results)
+    
