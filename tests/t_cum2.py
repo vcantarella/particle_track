@@ -1,6 +1,6 @@
 import numpy as np
 import flopy
-from particle_track.particle_track import pollock
+from particle_track.particle_track_full import pollock
 from particle_track.cumulate_relative_reactivity import cumulative_reactivity, cumulate_react, cumulative_gu
 from particle_track.cumulative_relative_reactivity_cuda import cumulative_cuda
 import os
@@ -46,10 +46,10 @@ if __name__ == '__main__':
     #%%
     inds = []
     for i in range(len(pf)):
-        x = pf[i][0][0]
-        y = pf[i][0][1]
+        x = pf[i][0]['x']
+        y = pf[i][0]['y']
         x,y = grid.get_coords(x, y) # convert from local coordinates to global coordinates
-        z = pf[i][0][2]
+        z = pf[i][0]['z']
         layer, row, col = grid.intersect(x,y,z)
         inds.append((x,y,z,layer,row,col))
 

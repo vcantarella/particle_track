@@ -4,7 +4,7 @@ import numba
 import numpy as np
 from numba import float64, int64
 
-from .particle_track import (
+from .particle_track_full import (
     exit_direction,
     exit_location,
     larger_index,
@@ -49,10 +49,7 @@ def travel_time_cum_reactivity(
 
     """
     # initializing:
-    cell = initial_cell
-    layer = cell[0]
-    row = cell[1]
-    col = cell[2]
+    layer, row, col = initial_cell
 
     continue_tracking = True
     coords = initial_position
@@ -62,7 +59,6 @@ def travel_time_cum_reactivity(
     reacts = 0.0
 
     while continue_tracking:
-
         # coordinates at lower and upper faces:
         left_x = xedges[col]
         right_x = xedges[col + 1]
@@ -110,10 +106,6 @@ def travel_time_cum_reactivity(
         dt = np.min(dt_array)
         exit_point_loc = np.argmin(dt_array)
 
-        # TODO: check if this statement is still necessary!!
-        # if dt == np.inf:
-        #    break
-
         exit_point = exit_location(
             exit_direction_index,
             velocity_gradient_index,
@@ -129,10 +121,14 @@ def travel_time_cum_reactivity(
 
         if exit_point_loc == 0:
             col = col + exit_direction_index[0]
+
         if exit_point_loc == 1:
             row = row + (-exit_direction_index[1])
+            
         if exit_point_loc == 2:
             layer = layer + (-exit_direction_index[2])
+
+            
 
         dts += dt  # traveltime calculation
         reacts += relative_react * dt  # relative reactivity

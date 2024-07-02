@@ -1,4 +1,4 @@
 [tool.pytest.ini_options]
 pythonpath = [
-  ".", "particle_track",
+  ".", "particle_track", "tests"
 ]

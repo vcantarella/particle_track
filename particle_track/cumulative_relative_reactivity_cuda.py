@@ -24,17 +24,18 @@ def exit_direction_cuda(v1, v2, v):
     -------
 
     """
+    eps = np.finfo(np.float64).eps
     r = 0
-    if (v1 > 0.0) & (v2 > 0.0):
+    if (v1 > eps) & (v2 > eps):
         r = 1
-    elif (v1 < 0.0) & (v2 < 0.0):
+    elif (v1 < -eps) & (v2 < -eps):
         r = -1
-    elif (v1 >= 0.0) & (v2 <= 0.0):
+    elif (v1 >= eps) & (v2 <= -eps):
         r = 0
     else:  # (v1 < 0) & (v2 > 0):
-        if v > 0:
+        if v > eps:
             r = 1
-        elif v < 0:
+        elif v < -eps:
             r = -1
         else:
             r = 0

@@ -3,16 +3,18 @@ import subprocess
 
 import flopy
 import numpy as np
-
+from particle_track.cumulative_relative_reactivity_cuda import cumulative_cuda
+from particle_track.particle_track_full import pollock, trajectory
+from particle_track.preprocessing import prepare_arrays
 from particle_track.cumulate_relative_reactivity import (
     cumulate_react,
     cumulative_gu,
     cumulative_reactivity,
     travel_time_cum_reactivity,
 )
-from particle_track.cumulative_relative_reactivity_cuda import cumulative_cuda
-from particle_track.particle_track import pollock, trajectory
-from particle_track.preprocessing import prepare_arrays
+
+
+
 
 cumulate_react.parallel_diagnostics(level=4)
 
@@ -40,10 +42,10 @@ pf = p.get_alldata()
 X, Y, Z = grid.xyzcellcenters
 inds = []
 for i in range(len(pf)):
-    x = pf[i][0][0]
-    y = pf[i][0][1]
+    x = pf[i][0]['x']
+    y = pf[i][0]['y']
     x, y = grid.get_coords(x, y)  # convert from local coordinates to global coordinates
-    z = pf[i][0][2]
+    z = pf[i][0]['z']
     layer, row, col = grid.intersect(x, y, z)
     inds.append((x, y, z, layer, row, col))
 
@@ -138,3 +140,8 @@ print(np.isclose(ttnumbapath, ct_results[0]))
 print(np.isclose(ttnumbapath, ct_results[1]))
 print(np.isclose(ttnumbapath, ct_res2[:, 0]))
 print(np.isclose(ttnumbapath, ct_res2[:, 1]))
+
+assert np.isclose(ttnumbapath, ct_results[0]).all()
+assert np.isclose(ttnumbapath, ct_results[1]).all()
+assert np.isclose(ttnumbapath, ct_res2[:, 0]).all()
+assert np.isclose(ttnumbapath, ct_res2[:, 1]).all()
