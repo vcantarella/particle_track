@@ -1,189 +1,21 @@
 import math
-
 import flopy
 import numpy as np
 from numba import boolean, cuda, float64, int16, int32
 
-from .preprocessing import prepare_arrays
-
-
-@cuda.jit(int16(float64, float64, float64), device=True, inline=True)
-def exit_direction_cuda(v1, v2, v):
-    """
-    Define exit direction (lower or upper) based on current velocity of particle and the velocity at faces (run for each axis: x,y,z)
-    Parameters
-    ----------
-    v1: velocity at lower face
-    v2: velocity at upper face
-    v: current velocity
-
-    Returns
-    index (-1: exit at lower face (negative axis direction),
-            0: impossible exit at this axis
-            1: exit at upper face (positive axis direction)
-    -------
-
-    """
-    eps = np.finfo(np.float64).eps
-    r = 0
-    if (v1 > eps) & (v2 > eps):
-        r = 1
-    elif (v1 < -eps) & (v2 < -eps):
-        r = -1
-    elif (v1 >= eps) & (v2 <= -eps):
-        r = 0
-    else:  # (v1 < 0) & (v2 > 0):
-        if v > eps:
-            r = 1
-        elif v < -eps:
-            r = -1
-        else:
-            r = 0
-    return r
-
-
-@cuda.jit(
-    float64(
-        int16, boolean, float64, float64, float64, float64, float64, float64, float64
-    ),
-    device=True,
-    fastmath=False,
-    inline=True,
+from .preprocessing import prepare_arrays_cuda
+from .cumulative_relative_reactivity_cuda import (
+    exit_direction_cuda,
+    reach_time_cuda,
+    argmin_cuda,
+    exit_location_cuda,
+    negative_index_cuda,
+    larger_index_cuda,
 )
-def reach_time_cuda(exit_ind, gradient_logic, v0, v1, v, gv, x, left_x, right_x):
-    """
-    Calculates the time to reach the exit faces at each axis.
-
-    Parameters
-    ----------
-    exit_ind: index calulated from exit_direction
-    gradient_logic: check if there is a velocity gradient (if true then the normal expression cannot be used)
-    v1: velocity at the lower face
-    v2: velocity at the upper face
-    v: current particle velocity
-    gv: velocity gradient in the cell
-    x: current particle coordinates
-    left_x: coordinates of lower left corner
-    right_x: coordinates of upper right corner
-
-    Returns
-    -------
-    dt: travel time at the current cell
-
-    """
-    if exit_ind == 0:
-        tx = np.inf
-    elif exit_ind == -1:
-        if gradient_logic:
-            v0 = abs(v0)
-            v = abs(v)
-            tx = math.log(v0) / gv - math.log(v) / gv
-        else:
-            tx = (-1) * (x - left_x) / v
-    else:  # exit_ind == 1
-        if gradient_logic:
-            tx = math.log(v1) / gv - math.log(v) / gv
-        else:
-            tx = (right_x - x) / v
-    return tx
 
 
-@cuda.jit(int16(float64, float64, float64), device=True)
-def argmin_cuda(dt_x, dt_y, dt_z):
-    if dt_x <= dt_y:
-        if dt_x <= dt_z:
-            return 0
-        else:
-            return 2
-    elif dt_y <= dt_z:
-        return 1
-    else:
-        return 2
-
-
-@cuda.jit(
-    float64(
-        int16,
-        boolean,
-        float64,
-        float64,
-        float64,
-        float64,
-        float64,
-        float64,
-        float64,
-        float64,
-        boolean,
-    ),
-    device=True,
-)
-def exit_location_cuda(exit_ind, gradient_logic, dt, v0, v1, v, gv, x, left_x, right_x, is_exit):
-    """
-    Calculate the coordinates at the exit location in the cell
-    Parameters
-    ----------
-    exit_ind: index calulated from exit_direction
-    gradient_logic: check if there is a velocity gradient (if true then the normal expression cannot be used)
-    dt: calculated travel time at the cell
-    v1: velocity at the lower face
-    v2: velocity at the upper face
-    v: current particle velocity
-    gv: velocity gradient in the cell
-    x: current particle coordinates
-    left_x: coordinates of lower left corner
-    right_x: coordinates of upper right corner
-
-    Returns
-    -------
-    coords: exit coordinate at each axis
-
-    """
-    eps = np.finfo(np.float64).eps
-    if is_exit:
-        if exit_ind == 1:
-            x_new = right_x
-        else:
-            x_new = left_x
-    elif abs(v*dt) > eps:
-        if not (gradient_logic):
-            x_new = x + v * dt
-        elif exit_ind == 1:
-            x_new = left_x + (1 / gv) * (v * math.exp(gv * dt) - v0)
-        elif exit_ind == -1:
-            x_new = right_x + (1 / gv) * (v * math.exp(gv * dt) - v1)
-        else:
-            x_new = left_x + (1 / gv) * (v * math.exp(gv * dt) - v0)
-    else:
-        x_new = x
-
-    return x_new
-
-
-@cuda.jit(boolean(int32, int32, int32), device=True)
-def negative_index_cuda(ind_x, ind_y, ind_z):
-    if ind_x < 0:
-        return True
-    elif ind_y < 0:
-        return True
-    elif ind_z < 0:
-        return True
-    else:
-        return False
-
-
-@cuda.jit(boolean(int32, int32, int32, int32, int32, int32), device=True)
-def larger_index_cuda(test_x, test_y, test_z, reference_x, reference_y, reference_z):
-    if test_x > reference_x:
-        return True
-    elif test_y > reference_y:
-        return True
-    elif test_z > reference_z:
-        return True
-    else:
-        return False
-
-
-def travel_time_kernel(
+@cuda.jit()
+def particle_kernel(
     initial_position,
     initial_cell,
     face_velocities,
@@ -249,6 +81,7 @@ def travel_time_kernel(
         count = 0  # error count
         max_count = termination.shape[0] * termination.shape[1] * termination.shape[2]
         error = 0
+        j = 0
 
         while continue_tracking:
             # coordinates at lower and upper faces:
@@ -293,6 +126,7 @@ def travel_time_kernel(
 
             if (exit_direction_x == 0) and (exit_direction_y == 0) and (exit_direction_z == 0):
                 continue_tracking = False
+                break
             # Time to reach each end
             dt_x = reach_time_cuda(
                 exit_direction_x,
@@ -417,43 +251,75 @@ def travel_time_kernel(
         result[i, 2] = error
 
 
-def cumulative_cuda(
+def particle_track(
     gwfmodel: flopy.mf6.MFModel,
     model_directory: str,
     particles_starting_location: np.ndarray,
     porosity: float | np.ndarray,
     reactivity: np.ndarray,
     debug: bool = False,
+    mode: str = "forward",
+    na_value: float = -9999.0,
 ):
     """
-    Cumulative reactivity model (Loschko et al 2016) implemented in CUDA for graphics card calculation.
+    Particle Tracking (Pollock, 1988) implemented in Numba CUDA.
     """
-    xedges, yedges, z_lf, z_uf, gvs, face_velocities, termination = prepare_arrays(
+    xedges, yedges, z_lf, z_uf, face_velocities, termination = prepare_arrays_cuda(
         gwfmodel, model_directory, porosity
     )
     # Reverting the velocities field the tracking direction is backwards:
-    face_velocities = (-1) * face_velocities
+    if mode == "backward":
+        face_velocities = (-1) * face_velocities
+    # host arrays for the results:
+    particle_locs = np.ones((particles_starting_location.shape[0], termination.size, 3), dtype = np.float64)*na_value
+    dts = np.ones((particles_starting_location.shape[0], termination.size), dtype = np.float64)*na_value
+
+    # sending fixed arrays to the device
+    # everything here has to be in the device memory, because the shared memory is very small compared to normal modflow arrays
     face_velocities = cuda.to_device(face_velocities)
     xedges = cuda.to_device(xedges)
     yedges = cuda.to_device(yedges)
     z_lf = cuda.to_device(z_lf)
     z_uf = cuda.to_device(z_uf)
     termination = cuda.to_device(termination)
-    reactivity = cuda.to_device(reactivity)
     # Defining cells and particle coordinates
     particle_coords = particles_starting_location[:, 0:3].copy()
     particle_coords = cuda.to_device(particle_coords)
     particle_cells = particles_starting_location[:, 3:].copy().astype(np.int32)
     particle_cells = cuda.to_device(particle_cells)
-    # initializing the result array
-    tr = cuda.device_array((particles_starting_location.shape[0], 3))
-    # invoking the kernel:
-    with cuda.defer_cleanup():
-        threadsperblock = 256
-        blockspergridgs = 22 * 80
-        # blockspergrid = (particle_cells.shape[0] + (threadsperblock - 1)) // threadsperblock
-        kernel = cuda.jit(travel_time_kernel, debug=debug, opt=not (debug))
-        kernel[blockspergridgs, threadsperblock](
+    
+    # declaring the threads and blocks (VODOO for now, need to be optimized)
+
+    threadsperblock = 256
+
+    # lets say I have a grid too large to fit all the results in the device memory. Then I need to optimize the blocks for that.
+    max_memory = cuda.current_context().get_memory_info()[1]
+    max_memory = max_memory - particle_coords.size * 8 - particle_cells.size * 4\
+         - termination.size * 4 - reactivity.size * 8 - face_velocities.size * 8\
+             - xedges.size * 8 - yedges.size * 8 - z_lf.size * 8 - z_uf.size * 8
+    
+    
+
+    # memory conservative blocks per grid estimation:
+    size_per_particle = termination.size * 8 * 2
+    max_particles_parallel = math.floor(max_memory / size_per_particle)
+    for threads in np.array([32, 64, 128, 256, 512, 1024]):
+        blocks_memory = math.floor(max_particles_parallel / threads)
+        if blocks_memory > 0:
+            blockspergrid = blocks_memory
+            threadsperblock = threads
+            break
+
+    blocks_grid = math.ceil(particles_starting_location.shape[0] / blocks_memory)
+    blockspergrid = min(blocks_grid, blocks_memory)
+
+    # Pin memory
+    with cuda.pinned(particle_locs, dts):
+        stream = cuda.stream()
+
+        dev_plocs = cuda.to_device(particle_locs, stream=stream)
+        dev_dts = cuda.to_device(dts, stream=stream)
+        particle_kernel[blockspergrid, threadsperblock, stream](
             particle_coords,
             particle_cells,
             face_velocities,
@@ -462,9 +328,15 @@ def cumulative_cuda(
             z_lf,
             z_uf,
             termination,
-            reactivity,
-            tr,
+            dev_plocs,
+            dev_dts,
         )
-    result = tr.copy_to_host()
-    result = result
-    return result
+
+        dev_plocs.copy_to_host(particle_locs, stream=stream)
+        dev_dts.copy_to_host(dts, stream=stream)
+    stream.synchronize()
+    
+    particle_locs = particle_locs[particle_locs != na_value]
+    dts = dts[dts != na_value]
+
+    return particle_locs, dts
