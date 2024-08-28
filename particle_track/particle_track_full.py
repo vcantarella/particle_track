@@ -6,19 +6,15 @@ Created on Wed May 10 16:35:06 2023
 @author: vcant
 """
 
-# Assumes model is unrotated.
 from functools import partial
 from multiprocessing import Pool
-import flopy
 
+import flopy
 import numba
 import numpy as np
 from numba import boolean, float64, int64
 
 from .preprocessing import prepare_arrays
-
-
-# creating the velocity function:
 
 
 @numba.njit(nogil=True)
@@ -177,11 +173,9 @@ def exit_location(exit_ind, gradient_logic, dt, v1, v2, v, gv, x, left_x, right_
         x_new = x + v * dt
     elif np.abs(v) > 1e-20:
         if exit_ind == 1:
-
             x_new = left_x + (1 / gv) * (v * np.exp(gv * dt) - v1)
 
         elif exit_ind == -1:
-
             x_new = right_x + (1 / gv) * (v * np.exp(gv * dt) - v2)
         else:
             x_new = left_x + (1 / gv) * (v * np.exp(gv * dt) - v1)
@@ -262,29 +256,16 @@ def trajectory(
 
     termination_criteria = True
     ts = []
-    layers = [
-        layer,
-    ]
-    rows = [
-        row,
-    ]
-    cols = [
-        col,
-    ]
-    xes = [
-        x,
-    ]
-    yes = [
-        y,
-    ]
-    zes = [
-        z,
-    ]
+    layers = []
+    rows = []
+    cols = []
+    xes = []
+    yes = []
+    zes = []
     coords = np.array([x, y, z])
 
     # While loop until termination:
     while termination_criteria:
-
         # coordinates at lower and upper faces:
         left_x = xedges[col]
         right_x = xedges[col + 1]
@@ -352,6 +333,28 @@ def trajectory(
         if exit_point_loc == 2:
             layer = layer + (-exit_direction_index[2])
 
+        ##termination criteria evaluation: whether the particle has reached a termination layer or out of the system
+        has_negative_index = negative_index(np.array([layer, row, col]))
+        over_index = larger_index(
+            np.array([layer, row, col]), np.array(termination.shape)
+        )
+        term_value = termination[layer, row, col]
+
+        if (term_value == 1) | has_negative_index | over_index:
+            termination_criteria = False
+
+            for i, index in enumerate((layer, row, col)):
+                if index < 0:
+                    index = 0
+                if index >= termination.shape[i]:
+                    index = termination.shape[i] - 1
+                if i == 0:
+                    layer = index
+                if i == 1:
+                    row = index
+                if i == 2:
+                    col = index
+
         # Adding to the dataset:
         layers.append(layer)
         rows.append(row)
@@ -361,20 +364,10 @@ def trajectory(
         yes.append(exit_point[1])
         zes.append(exit_point[2])
 
-        ##termination criteria evaluation: whether the particle has reached a termination layer or out of the system
-
-        has_negative_index = negative_index(np.array([layer, row, col]))
-        over_index = larger_index(
-            np.array([layer, row, col]), np.array(termination.shape)
-        )
-        term_value = termination[layer, row, col]
-
-        if (term_value == 1) | has_negative_index | over_index:
-            termination_criteria = False
         # new loop:
         coords = exit_point
 
-    ts.append(0.0)
+    # ts.append(0.0)
     ts = np.array(ts)
     xes = np.array(xes)
     yes = np.array(yes)
@@ -383,7 +376,45 @@ def trajectory(
     rows = np.array(rows)
     cols = np.array(cols)
     inds = np.column_stack((layers, rows, cols))
-    return inds, ts, xes, yes, zes
+    return (inds, ts, xes, yes, zes)
+
+
+@numba.jit(nopython=True, parallel=True)
+def work_v2(
+    particle_centers, face_velocities, gvs, xedges, yedges, z_lf, z_uf, termination
+):
+    """
+    Runs the particle trajectory in a multiprocessing enviroment using plain numba
+    """
+    # Preallocating lists of the results for thread safety
+    inds_list = [
+        np.empty((0, 3), dtype=np.int64) for _ in range(particle_centers.shape[0])
+    ]
+    ts_list = [
+        np.empty((0), dtype=np.float64) for _ in range(particle_centers.shape[0])
+    ]
+    pos_list = [
+        np.empty((0, 3), dtype=np.float64) for _ in range(particle_centers.shape[0])
+    ]
+    # parallel loop of particles
+    for i in numba.prange(particle_centers.shape[0]):
+        particle_starting_coords = particle_centers[i, :3]
+        particle_starting_cell = particle_centers[i, 3:].astype(np.int64)
+        inds, ts, xes, yes, zes = trajectory(
+            particle_starting_coords,
+            particle_starting_cell,
+            face_velocities,
+            gvs,
+            xedges,
+            yedges,
+            z_lf,
+            z_uf,
+            termination,
+        )
+        inds_list[i] = inds
+        ts_list[i] = ts
+        pos_list[i] = np.column_stack((xes, yes, zes))
+    return inds_list, ts_list, pos_list
 
 
 def work(
@@ -430,6 +461,28 @@ def pollock(
     mode: str = "forward",
     processes: int = 4,
 ):
+    """
+    Runs particle tracking in a modflow (flopy) model, using the algorithm of Pollock (1988).
+    Parameters
+    ----------
+    gwfmodel : flopy.mf6.MFModel
+        The modflow model
+    model_directory : str
+        The directory where the model is stored
+    particles_starting_location : np.ndarray
+        The particle array information
+    porosity : float | np.ndarray
+        The porosity of the model (can be a constant or an array matching the grid)
+    mode : str, optional
+        The direction of the particle tracking (forward or backwards). The default is "forward".
+    processes : int, optional
+        The number of processes to run the particle tracking. The default is 4.
+    The particle array information is stored in the iterator_realization variable
+    Returns
+    -------
+    particle_locations : np.ndarray[n,5]
+        returns an array with the particle indexes, x,y,z location and travel time (i, x, y, z, t)
+    """
     iter_coords = iter(particles_starting_location)
     js = np.arange(particles_starting_location.shape[0])
 
@@ -458,4 +511,64 @@ def pollock(
     true_results = np.vstack(results)
 
     return true_results
-    
+
+
+def pollock_v2(
+    gwfmodel: flopy.mf6.MFModel,
+    model_directory: str,
+    particles_starting_location: np.ndarray,
+    porosity: float | np.ndarray,
+    mode: str = "forward",
+    processes: int = 4,
+):
+    """
+    Runs particle tracking in a modflow (flopy) model, using the algorithm of Pollock (1988).
+    Parameters
+    ----------
+    gwfmodel : flopy.mf6.MFModel
+        The modflow model
+    model_directory : str
+        The directory where the model is stored
+    particles_starting_location : np.ndarray
+        The particle array information
+    porosity : float | np.ndarray
+        The porosity of the model (can be a constant or an array matching the grid)
+    mode : str, optional
+        The direction of the particle tracking (forward or backwards). The default is "forward".
+    processes : int, optional
+        The number of processes to run the particle tracking. The default is 4.
+    The particle array information is stored in the iterator_realization variable
+    Returns
+    -------
+    particle_locations : np.ndarray[n,5]
+        returns an array with the particle indexes, x,y,z location and travel time (i, x, y, z, t)
+    """
+    xedges, yedges, z_lf, z_uf, gvs, face_velocities, termination = prepare_arrays(
+        gwfmodel, model_directory, porosity
+    )
+
+    if mode == "backwards":
+        face_velocities = (-1) * face_velocities
+        gvs = (-1) * gvs
+
+    inds_list, ts_list, pos_list = work_v2(
+        particles_starting_location,
+        face_velocities,
+        gvs,
+        xedges,
+        yedges,
+        z_lf,
+        z_uf,
+        termination,
+    )
+
+    true_results = []
+
+    for i in range(len(inds_list)):
+        true_results.append(
+            np.column_stack((np.repeat(i, len(inds_list[i])), pos_list[i], ts_list[i]))
+        )
+
+    true_results = np.vstack(true_results)
+
+    return true_results

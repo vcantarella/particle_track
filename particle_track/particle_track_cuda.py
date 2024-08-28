@@ -310,7 +310,7 @@ def particle_track(
             threadsperblock = threads
             break
 
-    blocks_grid = math.ceil(particles_starting_location.shape[0] / blocks_memory)
+    blocks_grid = math.ceil(particles_starting_location.shape[0] / threadsperblock)
     blockspergrid = min(blocks_grid, blocks_memory)
 
     # Pin memory

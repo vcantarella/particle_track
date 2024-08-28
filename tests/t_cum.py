@@ -1,5 +1,7 @@
 import os
 import subprocess
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import flopy
 import numpy as np
@@ -78,70 +80,68 @@ tr = travel_time_cum_reactivity(
 initial_location = initial_location[np.newaxis, :]
 initial_cell = initial_cell[np.newaxis, :]
 tr2 = np.zeros_like(initial_location)
-tr2 = cumulative_cuda(
-    initial_location,
-    initial_cell,
-    face_velocities,
-    gvs,
-    xedges,
-    yedges,
-    z_lf,
-    z_uf,
-    termination,
-    reactivity,
-)
-inds, ts, xes, yes, zes = trajectory(
-    initial_location,
-    initial_cell,
-    face_velocities,
-    gvs,
-    xedges,
-    yedges,
-    z_lf,
-    z_uf,
-    termination,
-)
+# tr2 = cumulative_cuda(
+#     initial_location,
+#     initial_cell,
+#     face_velocities,
+#     gvs,
+#     xedges,
+#     yedges,
+#     z_lf,
+#     z_uf,
+#     termination,
+#     reactivity,
+# )
+# inds, ts, xes, yes, zes = trajectory(
+#     initial_location,
+#     initial_cell,
+#     face_velocities,
+#     gvs,
+#     xedges,
+#     yedges,
+#     z_lf,
+#     z_uf,
+#     termination,
+# )
+if __name__ == "__main__":
 
-print(tr)
-print(np.sum(ts))
+    ct_results = cumulative_reactivity(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        reactivity=np.ones_like(head_array),
+    )
+    pt_results = pollock(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        mode="backwards",
+    )
+    ct_res2 = cumulative_gu(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        reactivity=np.ones_like(head_array),
+    )
 
-ct_results = cumulative_reactivity(
-    gwfmodel=gwf,
-    model_directory=model_directory,
-    particles_starting_location=prts_loc,
-    porosity=0.3,
-    reactivity=np.ones_like(head_array),
-)
-pt_results = pollock(
-    gwfmodel=gwf,
-    model_directory=model_directory,
-    particles_starting_location=prts_loc,
-    porosity=0.3,
-    mode="backwards",
-)
-ct_res2 = cumulative_gu(
-    gwfmodel=gwf,
-    model_directory=model_directory,
-    particles_starting_location=prts_loc,
-    porosity=0.3,
-    reactivity=np.ones_like(head_array),
-)
+    ttnumbapath = []
+    for j in range(np.max(pt_results[:, 0] + 1).astype(np.int16)):
+        results = pt_results[pt_results[:, 0] == j, 1:]
+        t = results[:, -1]
+        x = results[-1, 0]
+        y = results[-1, 1]
+        total_t = np.sum(t)
+        ttnumbapath.append(total_t)
 
-ttnumbapath = []
-for j in range(np.max(pt_results[:, 0] + 1).astype(np.int16)):
-    results = pt_results[pt_results[:, 0] == j, 1:]
-    t = results[:, -1]
-    x = results[-1, 0]
-    y = results[-1, 1]
-    total_t = np.sum(t)
-    ttnumbapath.append(total_t)
+    print(np.isclose(ttnumbapath, ct_results[:,0]))
+    print(np.isclose(ttnumbapath, ct_results[:,1]))
+    print(np.isclose(ttnumbapath, ct_res2[:, 0]))
+    print(np.isclose(ttnumbapath, ct_res2[:, 1]))
 
-print(np.isclose(ttnumbapath, ct_results[0]))
-print(np.isclose(ttnumbapath, ct_results[1]))
-print(np.isclose(ttnumbapath, ct_res2[:, 0]))
-print(np.isclose(ttnumbapath, ct_res2[:, 1]))
-
-assert np.isclose(ttnumbapath, ct_results[0]).all()
-assert np.isclose(ttnumbapath, ct_results[1]).all()
-assert np.isclose(ttnumbapath, ct_res2[:, 0]).all()
-assert np.isclose(ttnumbapath, ct_res2[:, 1]).all()
+    assert np.isclose(ttnumbapath, ct_results[:,0]).all()
+    assert np.isclose(ttnumbapath, ct_results[:,1]).all()
+    assert np.isclose(ttnumbapath, ct_res2[:, 0]).all()
+    assert np.isclose(ttnumbapath, ct_res2[:, 1]).all()

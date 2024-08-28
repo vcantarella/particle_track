@@ -164,8 +164,7 @@ def cumulate_react(
     termination,
     reactivity,
 ):
-    dts = np.empty((particle_coords.shape[0]))
-    reacts = np.empty((particle_coords.shape[0]))
+    result = np.empty((particle_coords.shape[0],2))
     for i in numba.prange(particle_coords.shape[0]):
         initial_cell = particle_cells[i, :]
         initial_position = particle_coords[i, :]
@@ -181,9 +180,9 @@ def cumulate_react(
             termination,
             reactivity,
         )
-        dts[i] = dt
-        reacts[i] = react
-    return dts, reacts
+        result[i,0] = dt
+        result[i,1] = react
+    return result
 
 
 def cumulative_reactivity(

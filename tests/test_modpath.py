@@ -1,6 +1,7 @@
 import os
 import subprocess
-
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import flopy
 import numpy as np
 
@@ -9,12 +10,14 @@ from particle_track import (
     cumulative_gu,
     cumulative_reactivity,
     pollock,
+    pollock_v2,
 )
 
 # Running the MODFLOW and modpath models
 subprocess.check_call(["python", "tests/verification_1.py"])
 subprocess.check_call(["python", "tests/verification_2.py"])
 subprocess.check_call(["python", "tests/verification_3.py"])
+subprocess.check_call(["python", "tests/verification_layered.py"])
 
 
 def test_verification1():
@@ -210,7 +213,7 @@ def test_verification3():
         ttnumbapath.append(total_t)
     ttnumbapath = np.array(ttnumbapath)
     ttmodpath = np.array(ttmodpath)
-    ttcumulative_track = ct_results[0]
+    ttcumulative_track = ct_results[:,0]
     ttcumulative_gu = ct_results_gu[:, 0]
     ttcumulative_cuda = ct_2[:, 0]
     np.testing.assert_allclose(ttnumbapath, ttmodpath, rtol = 1e-4, atol = 0.,)
@@ -218,3 +221,178 @@ def test_verification3():
     np.testing.assert_allclose(ttcumulative_gu, ttmodpath, rtol = 1e-4, atol = 0.,)
     np.testing.assert_allclose(ttnumbapath, ttmodpath, rtol = 1e-4, atol = 0.,)
     np.testing.assert_allclose(ttnumbapath, ttcumulative_cuda, rtol = 1e-4, atol = 0.,)
+
+def test_layered():
+    """Testing Verification Layered Model"""
+    name = "ammer_cake"
+    r_folder = "MODFLOW_testmodels"
+    model_directory = os.path.join(r_folder,"ammer_cake_v7")
+    mpnamf = name + "_mp_backward"
+    sim = flopy.mf6.MFSimulation.load(
+        sim_ws=model_directory,
+        exe_name="mf6",
+        verbosity_level=0,
+    )
+    gwf = sim.get_model(name)
+    head = gwf.output.head()
+    head_array = head.get_data()
+    grid = gwf.modelgrid
+    ## reading modpath output
+    # Get pathline:
+    p = flopy.utils.PathlineFile(os.path.join(model_directory, mpnamf + ".mppth"))
+    pf = p.get_alldata()
+    ttmodpath = []
+    inds = []
+    for i in range(len(pf)):
+        x = pf[i][0][0]
+        y = pf[i][0][1]
+        x, y = grid.get_coords(
+            x, y
+        )  # convert from local coordinates to global coordinates
+        z = pf[i][0][2]
+        layer, row, col = grid.intersect(x, y, z)
+        inds.append((x, y, z, layer, row, col))
+        time = pf[i]["time"]
+        ttmodpath.append(time[-1])
+
+    inds = np.vstack(inds)
+    prts_loc = inds
+    pt_results = pollock(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        mode="backwards",
+    )
+    pt_results_v2 = pollock_v2(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        mode="backwards",
+    )
+    ct_results = cumulative_reactivity(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        reactivity=np.ones_like(head_array),
+    )
+    ct_results_gu = cumulative_gu(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        reactivity=np.ones_like(head_array),
+    )
+    ct_2 = cumulative_cuda(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        reactivity=np.ones_like(head_array),
+    )
+    ttnumbapath = []
+    for j in range(np.max(pt_results[:, 0] + 1).astype(np.int16)):
+        results = pt_results[pt_results[:, 0] == j, 1:]
+        t = results[:, -1]
+        x = results[-1, 0]
+        y = results[-1, 1]
+        total_t = np.sum(t)
+        ttnumbapath.append(total_t)
+    ttnumbapath_v2 = []
+    for j in range(np.max(pt_results_v2[:, 0] + 1).astype(np.int16)):
+        results = pt_results_v2[pt_results_v2[:, 0] == j, 1:]
+        t = results[:, -1]
+        x = results[-1, 0]
+        y = results[-1, 1]
+        total_t = np.sum(t)
+        ttnumbapath_v2.append(total_t)
+    ttnumbapath = np.array(ttnumbapath)
+    ttnumbapath_v2 = np.array(ttnumbapath_v2)
+    ttmodpath = np.array(ttmodpath)
+    ttcumulative_track = ct_results[:,0]
+    ttcumulative_gu = ct_results_gu[:, 0]
+    ttcumulative_cuda = ct_2[:, 0]
+    np.testing.assert_allclose(ttnumbapath, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttcumulative_track, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttcumulative_gu, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath, ttcumulative_cuda, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath_v2, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath_v2, ttcumulative_cuda, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath, ttnumbapath_v2, rtol = 1e-4, atol = 0.,)
+
+def test_layered2():
+    """Testing Verification Layered Model in Forward Mode"""
+    name = "ammer_cake"
+    r_folder = "MODFLOW_testmodels"
+    model_directory = os.path.join(r_folder,"ammer_cake_v7")
+    mpnamf = name + "_mp_forward"
+    sim = flopy.mf6.MFSimulation.load(
+        sim_ws=model_directory,
+        exe_name="mf6",
+        verbosity_level=0,
+    )
+    gwf = sim.get_model(name)
+    grid = gwf.modelgrid
+    ## reading modpath output
+    # Get pathline:
+    p = flopy.utils.PathlineFile(os.path.join(model_directory, mpnamf + ".mppth"))
+    pf = p.get_alldata()
+    ttmodpath = []
+    inds = []
+    for i in range(len(pf)):
+        x = pf[i][0][0]
+        y = pf[i][0][1]
+        x, y = grid.get_coords(
+            x, y
+        )  # convert from local coordinates to global coordinates
+        z = pf[i][0][2]
+        layer, row, col = grid.intersect(x, y, z)
+        inds.append((x, y, z, layer, row, col))
+        time = pf[i]["time"]
+        ttmodpath.append(time[-1])
+
+    inds = np.vstack(inds)
+    prts_loc = inds
+    pt_results = pollock(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        mode="backwards",
+    )
+    pt_results_v2 = pollock_v2(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        mode="backwards",
+    )
+    
+    ttnumbapath = []
+    for j in range(np.max(pt_results[:, 0] + 1).astype(np.int16)):
+        results = pt_results[pt_results[:, 0] == j, 1:]
+        t = results[:, -1]
+        x = results[-1, 0]
+        y = results[-1, 1]
+        total_t = np.sum(t)
+        ttnumbapath.append(total_t)
+    ttnumbapath_v2 = []
+    for j in range(np.max(pt_results_v2[:, 0] + 1).astype(np.int16)):
+        results = pt_results_v2[pt_results_v2[:, 0] == j, 1:]
+        t = results[:, -1]
+        x = results[-1, 0]
+        y = results[-1, 1]
+        total_t = np.sum(t)
+        ttnumbapath_v2.append(total_t)
+    ttnumbapath = np.array(ttnumbapath)
+    ttnumbapath_v2 = np.array(ttnumbapath_v2)
+    ttmodpath = np.array(ttmodpath)
+
+    np.testing.assert_allclose(ttnumbapath, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath_v2, ttmodpath, rtol = 1e-4, atol = 0.,)
+    np.testing.assert_allclose(ttnumbapath, ttnumbapath_v2, rtol = 1e-4, atol = 0.,)
+
