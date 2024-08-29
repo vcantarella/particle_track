@@ -28,8 +28,7 @@ jobs:
         ruff check                          # Lint all files in the current directory (and any subdirectories).
     - name: Test with pytest
       run: |
-        conda install pytest
-        pip install pytest-html
+        pip install pytest
 
         NUMBA_ENABLE_CUDASIM=1 pytest
     - name: Coverage tests
