@@ -1,10 +1,7 @@
 import os
-from functools import partial
-
 import flopy
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.integrate import solve_ivp
 
 # Model creation:
 name = "mf6_verif"

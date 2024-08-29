@@ -188,11 +188,11 @@ grid = gwf.modelgrid
 inflow_points = np.where(rate > 0.0)
 outflow_points = np.where(rate < 0.0)
 inflow_lrc = [
-    (l, r, c) for l, r, c in zip(inflow_points[0], inflow_points[1], inflow_points[2])
+    (lay, r, c) for lay, r, c in zip(inflow_points[0], inflow_points[1], inflow_points[2])
 ]
 outflow_lrc = [
-    (l, r, c)
-    for l, r, c in zip(outflow_points[0], outflow_points[1], outflow_points[2])
+    (lay, r, c)
+    for lay, r, c in zip(outflow_points[0], outflow_points[1], outflow_points[2])
 ]
 
 inflow_nodes = grid.get_node(inflow_lrc)

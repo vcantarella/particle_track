@@ -1,12 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Create and run the MODFLOW and MODPATH model and save the model files in folder 'modflow_verification_2'
-
-@author: vcant
-"""
-
-# Running the MODFLOW model:
-""" -----------------------------------------------------"""
 import flopy
 import os
 import matplotlib.pyplot as plt

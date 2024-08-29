@@ -240,11 +240,8 @@ def test_layered():
     head = gwf.output.head().get_alldata()[0]
     head[head == 1e30] = np.nan
     delta_h = np.nanmax(head) - np.nanmin(head)
-    H = grid.top_botm.max()
     Lx = 900
-    Ly = 600
     ih = delta_h/(Lx-1.5)
-    A = Ly*H
     k = gwf.npf.k.array
     ## reading modpath output
     # Get pathline:
@@ -265,7 +262,6 @@ def test_layered():
         time = pf[i]["time"]
         ttmodpath.append(time[-1])
         k_ = k[layer, row, col]
-        h = grid.top_botm[layer, row, col]-grid.top_botm[layer+1, row, col]
         q = k_*ih
         v = q/0.3
         t = x/v
@@ -288,13 +284,6 @@ def test_layered():
         mode="backwards",
     )
     ct_results = cumulative_reactivity(
-        gwfmodel=gwf,
-        model_directory=model_directory,
-        particles_starting_location=prts_loc,
-        porosity=0.3,
-        reactivity=np.ones_like(head_array),
-    )
-    ct_results_gu = cumulative_gu(
         gwfmodel=gwf,
         model_directory=model_directory,
         particles_starting_location=prts_loc,
@@ -329,7 +318,6 @@ def test_layered():
     ttmodpath = np.array(ttmodpath)
     ttanalytical = np.array(ttanalytical)
     ttcumulative_track = ct_results[:,0]
-    ttcumulative_gu = ct_results_gu[:, 0]
     ttcumulative_cuda = ct_2[:, 0]
     np.testing.assert_allclose(ttanalytical, ttmodpath, rtol = 2e-7, atol = 0.,)
     np.testing.assert_allclose(ttnumbapath, ttmodpath, rtol = 2e-7, atol = 0.,)
@@ -377,11 +365,8 @@ def test_layered2():
     head = gwf.output.head().get_alldata()[0]
     head[head == 1e30] = np.nan
     delta_h = np.nanmax(head) - np.nanmin(head)
-    H = grid.top_botm.max()
     Lx = 900
-    Ly = 600
     ih = delta_h/(Lx-1.5)
-    A = Ly*H
     k = gwf.npf.k.array
     t_analytical = []
     for i in range(len(pf)):
@@ -390,7 +375,6 @@ def test_layered2():
         z = pf[i][0]["z"]
         layer, row, col = grid.intersect(x, y, z)
         k_ = k[layer, row, col]
-        h = grid.top_botm[layer, row, col]-grid.top_botm[layer+1, row, col]
         q = k_*ih
         v = q/0.3
         t = (Lx-x)/v

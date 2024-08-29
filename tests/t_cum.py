@@ -5,8 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import flopy
 import numpy as np
-from particle_track.cumulative_relative_reactivity_cuda import cumulative_cuda
-from particle_track.particle_track_full import pollock, trajectory
+from particle_track.particle_track_full import pollock
 from particle_track.preprocessing import prepare_arrays
 from particle_track.cumulate_relative_reactivity import (
     cumulate_react,

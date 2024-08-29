@@ -1,7 +1,7 @@
 import math
 import flopy
 import numpy as np
-from numba import boolean, cuda, float64, int16, int32
+from numba import cuda
 
 from .preprocessing import prepare_arrays_cuda
 from .cumulative_relative_reactivity_cuda import (
@@ -81,7 +81,7 @@ def particle_kernel(
         count = 0  # error count
         max_count = termination.shape[0] * termination.shape[1] * termination.shape[2]
         error = 0
-        j = 0
+        #j = 0
 
         while continue_tracking:
             # coordinates at lower and upper faces:
