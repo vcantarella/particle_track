@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import flopy
 
 
@@ -6,6 +7,11 @@ if __name__ == "__main__":
     # The model can be a 2D slice. It will have the same result as a 3D model.
     # The model will be a 2D slice of the 3D model. The 2D slice will be the xz plane
     ws = "MODFLOW_testmodels/ammer_cake_v7"
+    isExist = os.path.exists(ws)
+    if not isExist:
+        #Create a new directory because it does not exist
+        os.makedirs(ws)
+
     name = "ammer_cake"
     sim = flopy.mf6.MFSimulation(
         sim_name=name,

@@ -5,6 +5,7 @@ import numpy as np
 from numba import boolean, cuda, float64, int16, int32
 
 from .preprocessing import prepare_arrays
+eps = np.finfo(np.float64).eps
 
 
 @cuda.jit(int16(float64, float64, float64), device=True, inline=True)
@@ -24,18 +25,17 @@ def exit_direction_cuda(v1, v2, v):
     -------
 
     """
-    eps = np.finfo(np.float64).eps
     r = 0
-    if (v1 > eps) & (v2 > eps):
+    if (v1 > 0.0) & (v2 > 0.0):
         r = 1
-    elif (v1 < -eps) & (v2 < -eps):
+    elif (v1 < -0.0) & (v2 < -0.0):
         r = -1
-    elif (v1 >= eps) & (v2 <= -eps):
+    elif (v1 >= 0.0) & (v2 <= -0.0):
         r = 0
     else:  # (v1 < 0) & (v2 > 0):
-        if v > eps:
+        if v > 0.0:
             r = 1
-        elif v < -eps:
+        elif v < -0.0:
             r = -1
         else:
             r = 0
@@ -77,12 +77,12 @@ def reach_time_cuda(exit_ind, gradient_logic, v0, v1, v, gv, x, left_x, right_x)
         if gradient_logic:
             v0 = abs(v0)
             v = abs(v)
-            tx = math.log(v0) / gv - math.log(v) / gv
+            tx = math.log(v0/v) / gv# - math.log(v) / gv
         else:
             tx = (-1) * (x - left_x) / v
     else:  # exit_ind == 1
         if gradient_logic:
-            tx = math.log(v1) / gv - math.log(v) / gv
+            tx = math.log(v1/v) / gv# - math.log(v) / gv
         else:
             tx = (right_x - x) / v
     return tx
@@ -138,13 +138,12 @@ def exit_location_cuda(exit_ind, gradient_logic, dt, v0, v1, v, gv, x, left_x, r
     coords: exit coordinate at each axis
 
     """
-    eps = np.finfo(np.float64).eps
     if is_exit:
         if exit_ind == 1:
             x_new = right_x
         else:
             x_new = left_x
-    elif abs(v*dt) > eps:
+    elif abs(v) > eps*abs(v):
         if not (gradient_logic):
             x_new = x + v * dt
         elif exit_ind == 1:
@@ -173,11 +172,11 @@ def negative_index_cuda(ind_x, ind_y, ind_z):
 
 @cuda.jit(boolean(int32, int32, int32, int32, int32, int32), device=True)
 def larger_index_cuda(test_x, test_y, test_z, reference_x, reference_y, reference_z):
-    if test_x > reference_x:
+    if test_x > reference_x-1:
         return True
-    elif test_y > reference_y:
+    elif test_y > reference_y-1:
         return True
-    elif test_z > reference_z:
+    elif test_z > reference_z-1:
         return True
     else:
         return False
@@ -282,9 +281,9 @@ def travel_time_kernel(
             vz = gvpz * (z - bt_z) + v0z
 
             # Where is it going:
-            velocity_gradient_x = abs(v0x - v1x) > 1e-10 * max(abs(v0x), abs(v1x))
-            velocity_gradient_y = abs(v0y - v1y) > 1e-10 * max(abs(v0y), abs(v1y))
-            velocity_gradient_z = abs(v0z - v1z) > 1e-10 * max(abs(v0z), abs(v1z))
+            velocity_gradient_x = abs(v0x - v1x) > eps * max(abs(v0x), abs(v1x))
+            velocity_gradient_y = abs(v0y - v1y) > eps * max(abs(v0y), abs(v1y))
+            velocity_gradient_z = abs(v0z - v1z) > eps * max(abs(v0z), abs(v1z))
 
             # Exit direction:
             exit_direction_x = exit_direction_cuda(v0x, v1x, vx)
@@ -292,7 +291,8 @@ def travel_time_kernel(
             exit_direction_z = exit_direction_cuda(v0z, v1z, vz)
 
             if (exit_direction_x == 0) and (exit_direction_y == 0) and (exit_direction_z == 0):
-                continue_tracking = False
+                error = 1
+                break
             # Time to reach each end
             dt_x = reach_time_cuda(
                 exit_direction_x,
@@ -322,6 +322,8 @@ def travel_time_kernel(
 
             # actual travel time:
             dt = min(dt_x, dt_y, dt_z)
+            if dt == np.inf:
+                break
             exit_point_loc = argmin_cuda(dt_x, dt_y, dt_z)
             exit_x = False
             exit_y = False

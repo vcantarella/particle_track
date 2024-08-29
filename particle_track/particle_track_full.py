@@ -45,7 +45,7 @@ def velocity(coords, v0, gv, face_coords):
     return v
 
 
-@numba.vectorize(nopython=True)
+@numba.vectorize([int64(float64, float64, float64)], nopython=True)
 def exit_direction(v1, v2, v):
     """
     Define exit direction (lower or upper) based on current velocity of particle and the velocity at faces (run for each axis: x,y,z)
@@ -62,17 +62,16 @@ def exit_direction(v1, v2, v):
     -------
 
     """
-    eps = np.finfo(np.float64).eps
-    if (v1 >= eps) & (v2 > eps):
+    if (v1 >= 0.0) & (v2 > 0.0):
         r = 1
-    elif (v1 < -eps) & (v2 <= -eps):
+    elif (v1 < -0.0) & (v2 <= -0.0):
         r = -1
-    elif (v1 >= eps) & (v2 <= -eps):
+    elif (v1 >= 0.0) & (v2 <= -0.0):
         r = 0
     else:  # (v1 < 0) & (v2 > 0):
-        if v > eps:
+        if v > 0.0:
             r = 1
-        elif v < -eps:
+        elif v < -0.0:
             r = -1
         else:
             r = 0
@@ -122,12 +121,12 @@ def reach_time(exit_ind, gradient_logic, v1, v2, v, gv, x, left_x, right_x):
         if ~gradient_logic:
             tx = (-1) * (x - left_x) / v
         else:
-            tx = np.log(v1 / v) / gv
+            tx = (np.log(v1/v)) / gv
     else:  # exit_ind == 1
         if ~gradient_logic:
             tx = (right_x - x) / v
         else:
-            tx = np.log(v2 / v) / gv
+            tx = (np.log(v2/v)) / gv
     return tx
 
 
@@ -185,7 +184,7 @@ def exit_location(exit_ind, gradient_logic, dt, v1, v2, v, gv, x, left_x, right_
     return x_new
 
 
-@numba.njit(nogil=True)
+@numba.njit(float64[:](float64[:,:]), nogil=True)
 def numba_max_abs(d_array):
     res = []
     for i in range(d_array.shape[0]):
@@ -195,7 +194,7 @@ def numba_max_abs(d_array):
     return np.array(res)
 
 
-@numba.njit(nogil=True)
+@numba.njit(boolean(int64[:]), nogil=True)
 def negative_index(ind_array):
     for i in range(ind_array.shape[0]):
         if ind_array[i] < 0:
@@ -203,10 +202,14 @@ def negative_index(ind_array):
     return False
 
 
-@numba.njit(nogil=True)
+@numba.njit(boolean(int64[:],int64[:]),nogil=True)
 def larger_index(test_array, reference_array):
+    """
+    Check if the cell index represented by the test_array
+     is larger than the reference_array, which is a shape of the grid.
+    """
     for i in range(test_array.shape[0]):
-        if test_array[i] > reference_array[i]:
+        if test_array[i] > reference_array[i]-1:
             return True
     return False
 
@@ -254,7 +257,7 @@ def trajectory(
     row = initial_cell[1]
     col = initial_cell[2]
 
-    termination_criteria = True
+    continue_tracking = True
     ts = []
     layers = []
     rows = []
@@ -264,8 +267,10 @@ def trajectory(
     zes = []
     coords = np.array([x, y, z])
 
+    eps = np.finfo(np.float64).eps
+
     # While loop until termination:
-    while termination_criteria:
+    while continue_tracking:
         # coordinates at lower and upper faces:
         left_x = xedges[col]
         right_x = xedges[col + 1]
@@ -288,7 +293,7 @@ def trajectory(
         v = velocity(coords, v0, gvp, coords_0)
 
         # Where is it going:
-        velocity_gradient_index = np.abs(v0 - v1) > 1e-10 * numba_max_abs(
+        velocity_gradient_index = np.abs(v0 - v1) > eps * numba_max_abs(
             np.column_stack((v0, v1))
         )
         exit_direction_index = exit_direction(v0, v1, v)
@@ -341,7 +346,7 @@ def trajectory(
         term_value = termination[layer, row, col]
 
         if (term_value == 1) | has_negative_index | over_index:
-            termination_criteria = False
+            continue_tracking = False
 
             for i, index in enumerate((layer, row, col)):
                 if index < 0:

@@ -36,7 +36,6 @@ if __name__ == "__main__":
     k_array = vectorized_k(facies) #array of hydraulic conductivity
     # Model creation:
     name = "ammer_V07"
-    ws = "ammer_v7"
     sim = flopy.mf6.MFSimulation(
         sim_name=name,
         exe_name="mf6",
@@ -197,7 +196,10 @@ if __name__ == "__main__":
     ex_layers = ex_layers[ex_idomain == 1]
     ex_rows = ex_rows[ex_idomain == 1]
     ex_cols = ex_cols[ex_idomain == 1]
+    # select random 100 points:
+    np.random.seed(3333)
     outflow_points = np.column_stack((ex_layers, ex_rows, ex_cols)).astype(np.int64)
+    outflow_points = outflow_points[np.random.choice(outflow_points.shape[0], 100, replace=False)]
     # inflow nodes:
     in_layers = np.ravel(layers[:, :, 0])
     in_rows = np.ravel(rows[:, :, 0])
@@ -209,7 +211,10 @@ if __name__ == "__main__":
     in_layers = in_layers[in_idomain == 1]
     in_rows = in_rows[in_idomain == 1]
     in_cols = in_cols[in_idomain == 1]
+    # select random 100 points:
+    np.random.seed(3333)
     inflow_points = np.column_stack((in_layers, in_rows, in_cols)).astype(np.int64)
+    inflow_points = inflow_points[np.random.choice(inflow_points.shape[0], 100, replace=False)]
     # Particle centers:
 
 
