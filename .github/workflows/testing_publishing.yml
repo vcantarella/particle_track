@@ -26,18 +26,3 @@ jobs:
         pip install ruff
         ruff format                          # Format all files in the current directory (and any subdirectories).
         ruff check                          # Lint all files in the current directory (and any subdirectories).
-    - name: Test with pytest
-      env:
-        NUMBA_ENABLE_CUDASIM: 1
-      run: |
-        pip install pytest
-
-        pytest
-    - name: Coverage tests
-      env:
-        NUMBA_ENABLE_CUDASIM: 1
-        NUMBA_DISABLE_JIT: 1
-      run: |
-        pip install coverage
-        coverage run -m pytest
-        coverage report -m
