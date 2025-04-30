@@ -13,6 +13,7 @@ from particle_track.cumulate_relative_reactivity import (
     cumulative_reactivity,
     travel_time_cum_reactivity,
 )
+from particle_track.particle_track_cuda import pollock_cuda
 
 
 
@@ -126,6 +127,15 @@ if __name__ == "__main__":
         reactivity=np.ones_like(head_array),
     )
 
+    pt_results_cuda = pollock_cuda(
+        gwfmodel=gwf,
+        model_directory=model_directory,
+        particles_starting_location=prts_loc,
+        porosity=0.3,
+        mode="backwards",
+        reactivity=np.ones_like(head_array),
+    )
+
     ttnumbapath = []
     for j in range(np.max(pt_results[:, 0] + 1).astype(np.int16)):
         results = pt_results[pt_results[:, 0] == j, 1:]
@@ -134,6 +144,16 @@ if __name__ == "__main__":
         y = results[-1, 1]
         total_t = np.sum(t)
         ttnumbapath.append(total_t)
+    
+    ttcudapath = []
+    for j in range(np.max(pt_results_cuda[:, 0] + 1).astype(np.int16)):
+        results = pt_results_cuda[pt_results_cuda[:, 0] == j, 1:]
+        t = results[:, -1]
+        x = results[-1, 0]
+        y = results[-1, 1]
+        total_t = np.sum(t)
+        ttcudapath.append(total_t)
+    
 
     print(np.isclose(ttnumbapath, ct_results[:,0]))
     print(np.isclose(ttnumbapath, ct_results[:,1]))

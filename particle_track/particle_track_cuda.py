@@ -252,7 +252,7 @@ def count_steps_kernel(
 
 
 
-@cuda.jit(debug=True)
+@cuda.jit()
 def tracking_kernel(
     initial_position,
     initial_cell,
@@ -483,12 +483,24 @@ def tracking_kernel(
             y = exit_point_y
             z = exit_point_z
 
-            tracks[base_index+j,1] = x
-            tracks[base_index+j,2] = y
-            tracks[base_index+j,3] = z
-            tracks[base_index+j,4] = layer
-            tracks[base_index+j,5] = row
-            tracks[base_index+j,6] = col
+            for k, index in enumerate((layer, row, col)):
+                if index < 0:
+                    index = 0
+                if index >= termination.shape[k]:
+                    index = termination.shape[k] - 1
+                if k == 0:
+                    layer = index
+                if k == 1:
+                    row = index
+                if k == 2:
+                    col = index
+
+            tracks[base_index+j,1] = layer
+            tracks[base_index+j,2] = row
+            tracks[base_index+j,3] = col
+            tracks[base_index+j,4] = x
+            tracks[base_index+j,5] = y
+            tracks[base_index+j,6] = z
             tracks[base_index+j,7] = dt
             tracks[base_index+j,8] = relative_react*dt
             j += 1
@@ -514,7 +526,7 @@ def pollock_cuda(
         gwfmodel, model_directory, porosity
     )
     # Reverting the velocities field the tracking direction is backwards:
-    if mode == "backward":
+    if mode == "backwards":
         face_velocities = (-1) * face_velocities
     
     # sending fixed arrays to the device

@@ -133,6 +133,7 @@ if __name__ == '__main__':
         ttcudapath.append(total_t)
     
     print(pt_results_cuda)
+    print(pt_results_v2)
     print(ttcudapath)
 
     #%% md
