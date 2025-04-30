@@ -6,6 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from particle_track.particle_track_full import pollock, pollock_v2, work_v2
 from particle_track.cumulate_relative_reactivity import cumulative_reactivity
 from particle_track.cumulative_relative_reactivity_cuda import cumulative_cuda
+from particle_track.particle_track_cuda import pollock_cuda
 from particle_track.preprocessing import prepare_arrays
 import os
 import subprocess
@@ -88,6 +89,13 @@ if __name__ == '__main__':
     stop_time = time2.perf_counter()
     print(stop_time-start_time)
 
+    #%% md
+    start_time = time2.perf_counter()
+    pt_results_cuda = pollock_cuda(gwfmodel = gwf, model_directory = model_directory, particles_starting_location = prts_loc, porosity=0.3, mode='backwards',
+    reactivity=np.ones_like(head_array))
+    stop_time = time2.perf_counter()
+    print(stop_time-start_time)
+
     start_time = time2.perf_counter()
     ct_results = cumulative_reactivity(gwfmodel = gwf, model_directory = model_directory, particles_starting_location = prts_loc, porosity=0.3, reactivity=np.ones_like(head_array))
     #%%
@@ -116,6 +124,16 @@ if __name__ == '__main__':
         t = results[:,-1]
         total_t = np.sum(t)
         ttnumbapath_v2.append(total_t)
+    
+    ttcudapath = []
+    for j in range(np.max(pt_results_cuda[:,0]+1).astype(np.int16)):
+        results = pt_results_cuda[pt_results_cuda[:,0] == j, 1:]
+        t = results[:,-2]
+        total_t = np.sum(t)
+        ttcudapath.append(total_t)
+    
+    print(pt_results_cuda)
+    print(ttcudapath)
 
     #%% md
     #confirm it matches:
@@ -134,6 +152,7 @@ if __name__ == '__main__':
     assert np.isclose(ttnumbapath,ct_2[:,0]).all()
     assert np.isclose(ttnumbapath,ttmodpath, rtol = 0.001).all()
     assert np.isclose(ttnumbapath_v2, ttmodpath, rtol = 0.001).all()
+    #assert np.isclose(ttnumbapath_v2, ttcudapath, rtol = 0.001).all()
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 6), constrained_layout=True)
     ax.plot(particle_index,ttmodpath,'-*b', label = 'modpath')
@@ -141,6 +160,7 @@ if __name__ == '__main__':
     ax.plot(particle_index,ttcumulative_track,'--g', label='cumulative_react_time')
     ax.plot(particle_index,ttnumbapath_v2,'-og', label='particle_track_v2')
     ax.plot(particle_index,ct_2[:,0], '--k', label='cumulative_cuda')
+    ax.plot(particle_index,ttcudapath,'-^m', label='particle_track_cuda')
     ax.set_ylabel('travel time [days]')
     ax.set_xlabel('particle index')
     ax.set_title('Travel times')
